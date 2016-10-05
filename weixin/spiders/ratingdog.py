@@ -15,18 +15,26 @@ class RatingdogSpider(scrapy.Spider):
     name = "ratingdog"
     allowed_domains = ["mp.weixin.qq.com"]
     start_urls = (
-        'https://mp.weixin.qq.com/mp/getmasssendmsg?__biz=MzIzODUwODYzMw==&uin=NTEwMTYzOTM1&key=79512945a1fcb0e22bb912af1a861966d836d697c0f13f5a40f615afd44c9eab6f37559c61c4615dde4b47e46be9c5370c6f83175cd17ec7&devicetype=iMac+MacBookAir7%2C2+OSX+OSX+10.11.6+build(15G31)&version=12000006&lang=zh_CN&nettype=WIFI&ascene=0&fontScale=100&pass_ticket=cbo24Bo2%2FUQdJwv2O7CIif61%2BGoWFtnD0pIo0vMtaWlS9P997nUp%2BzmRvoRmg1cr',
+        'https://mp.weixin.qq.com/mp/getmasssendmsg?__biz=MzIzODUwODYzMw==&uin=NTEwMTYzOTM1&key=79512945a1fcb0e2fb2e751b4b021ac43f1a2d142d7d9f3cb1ddde483fb6912b24a493f2e7e0936695d5763f11398d0c2ef5ff52859cab37&devicetype=iMac+MacBookAir7%2C2+OSX+OSX+10.11.6+build(15G31)&version=12000006&lang=zh_CN&nettype=WIFI&ascene=0&fontScale=100&pass_ticket=XPXQytn7hZ%2B6Du36l3e76AAoNm9cJWh3ch6t2%2BrYw2NlpRte1TJpa4hK0uhsFCqN',
     )
-
     pageNo = 1
 
-    def __init__(self,start_url):
-        """初始化实例参数"""
-        self.start_url = start_url
+
+    def __init__(self,start_url=None,*args,**kwargs):
+
+        super(RatingdogSpider,self).__init__(*args,**kwargs) # 调用父类方法,绑定方法
+
+        if not start_url:
+            self.start_url = kwargs['start_url']
+        else:
+            self.start_url = start_url
+        #self.start_url = start_url
+
 
     def start_requests(self):
-
-        url = self.start_urls[0]
+        """SPIDER入口"""
+        #url = self.start_urls[0]
+        url = self.start_url
         print url
         data = urlparse.urlparse(url)
         print data
@@ -77,14 +85,17 @@ class RatingdogSpider(scrapy.Spider):
 
         else:
             """正则取出json字符串,并做清洗工作"""
-            pattern = re.compile("(?<=msgList = ').*(?=';)")
-            # 获取内容字符串
-            json_text = pattern.findall(response.body)
-            # 清理转义字符
-            json_text = json_text[0].replace("&quot;","'").replace("\\","").replace("amp;","").replace("&nbsp;","")
-            # 转化为字典
-            json_text = eval(json_text)
-            list = json_text['list']
+            try:
+                pattern = re.compile("(?<=msgList = ').*(?=';)")
+                # 获取内容字符串
+                json_text = pattern.findall(response.body)
+                # 清理转义字符
+                json_text = json_text[0].replace("&quot;","'").replace("\\","").replace("amp;","").replace("&nbsp;","")
+                # 转化为字典
+                json_text = eval(json_text)
+                list = json_text['list']
+            except IndexError:
+                print '获取json数据出错,以下是响应内容:\n',response.body
 
         topic_list = [{'id': item['comm_msg_info']['id'],
                        'title': item['app_msg_ext_info']['title'],
