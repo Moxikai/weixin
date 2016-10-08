@@ -4,12 +4,16 @@ import re
 import urlparse
 import json
 import sys
+import random
 reload(sys)
 sys.setdefaultencoding('utf-8')
 
 import scrapy
 from bs4 import BeautifulSoup
 from scrapy import Request
+from scrapy import FormRequest
+
+
 
 class RatingdogSpider(scrapy.Spider):
     name = "ratingdog"
@@ -18,7 +22,7 @@ class RatingdogSpider(scrapy.Spider):
         'https://mp.weixin.qq.com/mp/getmasssendmsg?__biz=MzIzODUwODYzMw==&uin=NTEwMTYzOTM1&key=79512945a1fcb0e2fb2e751b4b021ac43f1a2d142d7d9f3cb1ddde483fb6912b24a493f2e7e0936695d5763f11398d0c2ef5ff52859cab37&devicetype=iMac+MacBookAir7%2C2+OSX+OSX+10.11.6+build(15G31)&version=12000006&lang=zh_CN&nettype=WIFI&ascene=0&fontScale=100&pass_ticket=XPXQytn7hZ%2B6Du36l3e76AAoNm9cJWh3ch6t2%2BrYw2NlpRte1TJpa4hK0uhsFCqN',
     )
     pageNo = 1
-
+    readAndLike_url = 'http://mp.weixin.qq.com/mp/getappmsgext'
 
     def __init__(self,start_url=None,*args,**kwargs):
 
@@ -149,6 +153,128 @@ class RatingdogSpider(scrapy.Spider):
         data['imgs'] = imgs
         yield data
 
+    def parseDetail2(self,response):
+        """更通用的详细信息"""
+        groups = re.search(re.compile('(?<=nickname = ").*(?=")'),response.body)
+        nickname = groups.group(0) #昵称
+        groups = re.search(re.compile('(?<=ct = ").*(?=")'),response.body)
+        ct = groups.group(0) #时间戳
+        groups = re.search(re.compile('(?<=publish_time = ").*(?=")'),response.body)
+        publish_time = groups.group(0) #推送时间
+        groups = re.search(re.compile('(?<=fakeid = ").*(?=")'),response.body)
+        fakeid = groups.group(0) # fakeid
+        groups = re.search(re.compile('(?<=round_head_img = ").*(?=")'),response.body)
+        round_head_img = groups.group(0) # 头像
+        groups = re.search(re.compile('(?<=msg_title = ").*(?=")'),response.body)
+        msg_title = groups.group(0) # 标题
+        groups = re.search(re.compile('(?<=msg_desc = ").*(=")'),response.body)
+        msg_desc = groups.group(0) # 文章总结
+        groups = re.search(re.compile('(?<=msg_link = ").*(?=")'),response.body)
+        msg_link = groups.group(0) # 文章链接
+        groups = re.search(re.compile('(?<=req_id = ").*(?=")'),response.body)
+        req_id = groups.group(0)
+        groups = re.search(re.compile('(?<=appmsgid =)\d{1,}'),response.body)
+        msg_id = groups.group(0) # 文章id
+        groups = re.search(re.compile('(?<=appmsg_type = ").*(=")'),response.body)
+        appmsg_type = groups.group(0) # 文章类型
+        groups = re.search(re.compile('(?<=comment_id = ")\d{1}(?=")'),response.body)
+        comment_id = groups.group(0) # 评论id
+        groups = re.search(re.compile('(?<=is_need_reward = ")\d{1}(?=")'),response.body)
+        is_need_reward = groups.group(0)
+        groups = re.search(re.compile('(?<=msg_daily_idx = ")\d{1}(?=")'),response.body)
+        msg_daily_idx = groups.group(0)
+        groups = re.search(re.compile('(?<=window.wxtoken = ")\d{1,}(?=")'),response.body)
+        wxtoken = groups.group(0)
+        """解析version"""
+        groups = re.search(re.compile('(?<="appmsg/index\.js":").*(?=")'),response.body)
+        version = groups.group(0) # 取出链接
+        version = urlparse.urlparse(version)[2] # 获取相对路径
+
+
+        soup = BeautifulSoup(response.body, 'html.parser')
+        #获取图片
+        imgs = soup.find_all('img', attrs={"data-type": 'png'})
+        imgs = [img.get('data-src') for img in imgs]
+        imgs = '\n'.join(imgs)  # 转换成字符串
+        #获取文字
+        p_list = soup.find('div', id="js_content").find_all('p')  # 搜索所有P节点
+        p_text = [p.get_text() for p in p_list]  # 获取P节点的字符串
+        ps = '\n'.join(p_text)  # 转换为字符串
+
+        """有效数据部分"""
+        data = response.meta['data']
+        data['nickname'] = nickname
+        data['ct'] = ct
+        data['publish_time'] = publish_time
+        data['fakeid'] = fakeid
+        data['round_head_img'] = round_head_img
+        data['msg_title'] = msg_title
+        data['msg_desc'] = msg_desc
+        data['msg_link'] = msg_link
+        data['msg_id'] = msg_id
+        data['req_id'] = req_id
+        data['imgs'] = imgs
+        data['ps'] = ps
+
+        #从当前网址获取查询参数
+        url_data = urlparse.urlparse(response.url)
+        query_string = url_data[4] # 获取查询参数
+        query_dict = self.stringToDict(query_string) # 查询字符串转换成字典
+        """设置查询参数部分"""
+        new_query = {}
+        new_query['__biz'] = query_dict['__biz']
+        new_query['appmsg_type'] = appmsg_type
+        new_query['mid'] = query_dict['mid']
+        new_query['sn'] = query_dict['sn']
+        new_query['idx'] = query_dict['idx']
+        new_query['scence'] = query_dict['scence']
+        new_query['title'] = msg_title
+        new_query['ct'] = publish_time
+        new_query['devicetype'] = query_dict['devicetype']
+        new_query['version'] = version
+        new_query['f'] = 'json'
+        new_query['r'] = random.random() #获取随机数
+        new_query['is_need_ad'] = '1'
+        new_query['comment_id'] = comment_id
+        new_query['is_need_reward'] = is_need_reward
+        new_query['both_ad'] = '1'
+        new_query['reward_uin_count'] = '0'
+        new_query['ct1'] = publish_time
+        new_query['msg_daily_idx'] = msg_daily_idx
+        new_query['uin'] = query_dict['uin']
+        new_query['key'] = query_dict['key']
+        new_query['pass_ticket'] = query_dict['pass_ticket']
+        new_query['wxtoken'] = wxtoken
+        new_query['devicetype1'] = query_dict['devicetype']
+        new_query['clientversion'] = query_dict['version']
+        new_query['x5'] = '1'
+        """查询参数，字典转字符串"""
+        new_query_string = self.dictToString(**new_query)
+        #重复参数处理
+        new_query_string = re.sub(re.compile('ct1(?==)'),'ct',new_query_string)
+        new_query_string = re.sub(re.compile('devicetype1(?==)'),'devicetype',new_query_string)
+
+        #转到获取点赞
+        formdata = {'is_only_read':1,
+                    'req_id':req_id,
+                    'is_temp_url':0}
+        yield FormRequest(url=self.readAndLike_url,
+                          formdata=formdata,
+                          meta={'data':data},
+                          dont_filter=True)
+
+
+    def parseReadAndLike(self,response):
+        """获取阅读数和点赞数"""
+        json_text = json.loads(response.body)
+        read_num = json_text['appmsgstat']['read_num']
+        like_num = json_text['appmsgstat']['like_num']
+        data = response.meta['data']
+        data['read_num'] = read_num
+        data['like_num'] = like_num
+        yield data
+
+
     def cleanUrl(self,str):
         """清除网址中的反斜杠"""
         pattern = re.compile('\\\\(?=/)')
@@ -164,6 +290,13 @@ class RatingdogSpider(scrapy.Spider):
 
     def stringToDict(self,string):
         """网址查询参数转字典"""
+        dict = {}
+        for item in string.split('&'):
+            if item:
+                data = item.split('=')
+                dict[data[0]] = data[1] # 列表转字典
+        return dict
+
 
 
 
